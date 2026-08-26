@@ -1,4 +1,4 @@
-# Common Swift testing pitfalls and how to avoid them
+# Common Apple platform testing pitfalls and how to avoid them
 
 ### Testing implementation details instead of behavior
 ```swift
@@ -103,7 +103,46 @@ protocol PriceFormatting { func format(_ cents: Int) -> String }
 // ✅ Right — just use the real formatter, it's pure and fast
 let sut = CheckoutViewModel(formatter: PriceFormatter())
 ```
-**Avoid:** only mock at real boundaries — network, disk, system clock, randomness. Pure, deterministic, fast collaborators (formatters, mappers, math) should be used for real in tests; mocking them adds indirection without reducing risk.
+**Avoid:** only mock at real boundaries — network, disk, system clock, randomness, platform frameworks (HealthKit, WatchConnectivity). Pure, deterministic, fast collaborators (formatters, mappers, math) should be used for real in tests; mocking them adds indirection without reducing risk.
+
+### Standing up a full view controller lifecycle for logic tests
+```swift
+// ❌ Wrong — loads a real window and view hierarchy just to test a label update
+func testStatusLabelShowsError() {
+    let window = UIWindow()
+    let sut = StatusViewController()
+    window.rootViewController = sut
+    window.makeKeyAndVisible()
+    sut.showError("Network unavailable")
+    XCTAssertEqual(sut.statusLabel.text, "Network unavailable")
+}
+
+// ✅ Right — force just enough lifecycle to wire outlets, no window needed
+func testStatusLabelShowsError() {
+    let sut = StatusViewController()
+    sut.loadViewIfNeeded() // wires outlets without a window
+    sut.showError("Network unavailable")
+    XCTAssertEqual(sut.statusLabel.text, "Network unavailable")
+}
+```
+**Avoid:** don't create a `UIWindow`/`NSWindow` and present a controller just to assert on outlet-driven state — `loadViewIfNeeded()` (iOS/tvOS) or a single `.view` access (AppKit) forces `viewDidLoad` without the cost and flakiness of a real window. Reserve real window presentation for XCUITest, where the rendered UI is the point.
+
+### Snapshot tests recorded on an unpinned OS/simulator version
+```swift
+// ❌ Wrong — passes locally, flakes in CI on a different Xcode/simulator runtime
+func testCardViewSnapshot() {
+    let view = CardView(item: .fixture())
+    assertSnapshot(matching: view, as: .image)
+}
+
+// ✅ Right — CI config pins the exact simulator/OS the snapshots were recorded on
+// .xctestplan or CI script: xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5'
+func testCardViewSnapshot() {
+    let view = CardView(item: .fixture())
+    assertSnapshot(matching: view, as: .image, testName: "iPhone15-iOS17.5")
+}
+```
+**Avoid:** font hinting and rendering can shift subtly across OS/simulator versions, producing false failures unrelated to the code change. Pin the exact simulator device and OS version used to record snapshots in your CI configuration, and keep it in sync when intentionally re-recording.
 
 ### Vague test names
 ```swift

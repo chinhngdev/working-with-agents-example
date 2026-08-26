@@ -161,3 +161,24 @@ final class ViewModel: ObservableObject {
 }
 ```
 **Avoid:** isolate at the type level (`@MainActor` on the class) for view models where "everything touches UI state," rather than sprinkling `@MainActor` on individual methods — mixed isolation makes it hard to reason about which calls hop actors and creates unnecessary suspension points.
+
+### `@unchecked Sendable`/`@preconcurrency` as a reflex fix
+```swift
+// ❌ Wrong — silences the compiler without proving thread-safety; the underlying
+// race (if any) still exists, it's just no longer caught
+final class ImageCache: @unchecked Sendable {
+    private var storage: [URL: UIImage] = [:] // still unsynchronized!
+}
+
+// ✅ Right — either make it genuinely safe and document why, or fix the real issue
+actor ImageCache {
+    private var storage: [URL: UIImage] = [:]
+}
+
+// If truly unavoidable (e.g. verified internal locking), justify it explicitly:
+final class LegacyCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [URL: UIImage] = [:] // guarded by `lock` on every access — safe
+}
+```
+**Avoid:** treating `@unchecked Sendable` or a blanket `@preconcurrency import` as the fast way past a Swift 6 compiler error. `@unchecked Sendable` is only safe when you've manually verified synchronization (and left a comment saying how); `@preconcurrency import` should scope to one specific un-migrated dependency, not paper over an isolation bug in your own code.

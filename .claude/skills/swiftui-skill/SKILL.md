@@ -5,10 +5,13 @@ description: Write, review, or refactor SwiftUI code (views, state management, n
 
 Apply these best practices when writing or reviewing SwiftUI code. Prefer the modern Observation-based approach (iOS 17+/Swift 5.9+) unless the project's deployment target requires `ObservableObject`/Combine — check the Xcode project's deployment target or existing code style first, and match whatever the codebase already uses rather than mixing paradigms.
 
+Applies across all SwiftUI targets (iOS, iPadOS, macOS, watchOS, tvOS, visionOS) — most guidance below is platform-agnostic. Platform-specific notes are called out inline where they diverge (e.g. navigation shape on iPad/Mac, visionOS windowing).
+
 ## 1. State management
 
 - **Own state at the right level.** Use `@State` only for view-local, transient state (toggles, text field input, animation flags). Never make `@State` hold shared/business data.
-- **Modern observation (iOS 17+).** Use `@Observable` (from `Observation`) on plain classes for view models/data models instead of `ObservableObject` + `@Published`. In the view, hold it with `@State` (if the view owns/creates it) or plain `let`/property (if injected), not `@ObservedObject`.
+- **Modern observation (iOS 17+).** Use `@Observable` (from `Observation`) on plain classes for view models/data models instead of `ObservableObject` + `@Published`. In the view, hold it with `@State` (if the view owns/creates it) or plain `let`/property (if injected), not `@ObservedObject`. Need two-way binding into a field of an injected `@Observable`? Use `@Bindable` (either as a local `@Bindable var vm = vm` or directly `@Bindable var vm: Model` on the property) to get `$vm.field` bindings — plain `let`/property access doesn't support `$`.
+- **`@Observable` tracks only what's read.** Unlike `@Published`, observation is fine-grained per-property: a view only re-renders when a property it actually reads in `body` changes, not on every mutation of the object. This makes over-fragmenting `@Observable` models less necessary than it was with `ObservableObject`, but splitting by feature/screen (see below) still matters for large/unrelated concerns.
 - **Legacy target (pre-iOS 17).** Use `ObservableObject` classes with `@Published` properties, referenced via `@StateObject` (view owns/creates it — created once) vs `@ObservedObject` (injected from a parent — never instantiate directly in a view's property initializer, which recreates it on every parent re-render).
 - **Shared/app-wide state.** Use `@Environment` (custom `@Observable` types or `EnvironmentKey`) instead of singletons threaded through initializers. Avoid global mutable singletons for testability.
 - **Bindings.** Use `@Binding` for two-way child-to-parent communication. Don't pass a whole observable object down just to mutate one field — pass a `Binding` to that field, or a closure callback for one-shot events.
@@ -30,8 +33,10 @@ Apply these best practices when writing or reviewing SwiftUI code. Prefer the mo
 ## 4. Navigation
 
 - Use `NavigationStack` with a typed navigation path (`NavigationPath` or `[Route]` enum) for programmatic/deep-linkable navigation — avoid the deprecated `NavigationView`.
+- **Multi-column layouts (iPad, Mac, visionOS):** use `NavigationSplitView` instead of hand-rolling a sidebar with `HStack`/`NavigationView`'s old master-detail style. It adapts column count to size class automatically (collapsing to a single stack on compact width) and each column can host its own `NavigationStack` for independent push/pop history.
 - Drive navigation from state (`navigationDestination(for:)`, `.sheet(item:)`, `.fullScreenCover(item:)`) rather than imperative pushes, so navigation state is testable and restorable.
 - Prefer `.sheet(item:)`/`.fullScreenCover(item:)` (identity-driven) over `.sheet(isPresented:)` when the presented content depends on a specific data value — avoids stale-data bugs.
+- **visionOS windowing.** Use `WindowGroup`'s `.windowStyle(.volumetric)`/`.plain` and `ornament(visibility:attachmentAnchor:contentAlignment:)` for spatial chrome, and reach for a `RealityView` (not a plain `View`) only when a scene needs actual 3D/RealityKit content — most spatial apps are still ordinary SwiftUI 2D views placed in space, so don't add RealityKit machinery a screen doesn't need.
 
 ## 5. Data flow & side effects
 
@@ -39,6 +44,8 @@ Apply these best practices when writing or reviewing SwiftUI code. Prefer the mo
 - Keep networking/persistence out of views — call into a service/repository from the view model, inject dependencies (protocol-typed) so they're mockable in tests/previews.
 - Use `async/await` over completion-handler closures for new code.
 - Debounce/cancel in-flight work on rapid input changes (e.g. search-as-you-type) using `.task(id:)` cancellation rather than manual `Task` bookkeeping.
+- **Bridging to UIKit/AppKit.** When a screen needs a component SwiftUI doesn't expose (or an existing UIKit/AppKit view needs to host SwiftUI), wrap it with `UIViewRepresentable`/`UIViewControllerRepresentable` (`NSViewRepresentable` on macOS) rather than reimplementing it — keep the `Coordinator` as the single point of truth for delegate callbacks flowing back into SwiftUI state. See [[uikit-skill]] for the imperative side of that bridge.
+- **Swift 6 strict concurrency:** views are implicitly `@MainActor`-isolated, and an `@Observable` view model referenced from a view should generally also be `@MainActor`-isolated so its mutations and the view's reads stay on the same actor without extra `await` hops. For the isolation rules, actor design, and `Sendable` requirements this implies, see [[concurrency-skill]].
 
 ## 6. Performance
 
@@ -52,6 +59,7 @@ Apply these best practices when writing or reviewing SwiftUI code. Prefer the mo
 - Add `#Preview` blocks for every non-trivial view, including relevant states (empty, loading, error, populated) using mock data/dependencies.
 - Design view models around protocols/dependency injection so they can be previewed and unit-tested without hitting real network/disk.
 - Prefer pure functions for formatting/derived values so they're independently testable.
+- For writing the actual unit/UI tests against these view models and views (Swift Testing vs XCTest, testing `@Observable` state, XCUITest), see [[apple-testing]].
 
 ## 8. Accessibility & polish
 
@@ -81,6 +89,7 @@ The most frequent SwiftUI mistakes, in short:
 - `.sheet(isPresented:)` with data that can go stale (use `.sheet(item:)`)
 - Monolithic views that should be decomposed
 - Singletons instead of `@Environment`/DI
+- Non-isolated `@Observable` view model mutated from a background context (compiles under relaxed checking, races/crashes or silently misses UI updates under Swift 6)
 
 **For the failure mode, a ❌/✅ code example, and the fix for each one, read `references/common-pitfalls.md`.**
 

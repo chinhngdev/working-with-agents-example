@@ -155,3 +155,32 @@ struct SettingsView: View {
 }
 ```
 **Avoid:** reserve `.shared` singletons for true process-wide facilities with no per-instance state (e.g. `URLSession.shared`); inject everything else via `@Environment` or initializer parameters.
+
+### Non-isolated `@Observable` mutated off the main actor
+```swift
+// ❌ Wrong — no actor isolation on the model; a background call into it
+// races with the view reading the same properties on the main actor
+@Observable
+class FeedViewModel {
+    var items: [Item] = []
+
+    func refresh() async {
+        let fresh = try? await api.fetchItems() // may resume off-main
+        items = fresh ?? []                      // mutation isolation is unclear
+    }
+}
+
+// ✅ Right — isolate the whole model to the main actor so every mutation
+// and every view read happen on the same actor, with no manual hops
+@MainActor
+@Observable
+class FeedViewModel {
+    var items: [Item] = []
+
+    func refresh() async {
+        let fresh = try? await api.fetchItems()
+        items = fresh ?? []
+    }
+}
+```
+**Avoid:** default view models that back a SwiftUI view to `@MainActor @Observable`. Under Swift 5's relaxed checking this mistake often compiles cleanly and only misbehaves at runtime (a dropped UI update, an occasional crash); under Swift 6 strict concurrency it's a compile error, which is the safer failure mode. See [[concurrency-skill]] for the underlying isolation rules.

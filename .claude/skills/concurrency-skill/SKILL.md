@@ -39,13 +39,17 @@ Apply these practices when writing or reviewing concurrency code in Swift/iOS pr
 - **Reference types crossing boundaries** need `final class ... : Sendable` with all-`let` immutable storage, or actor isolation, or explicit `@unchecked Sendable` — only use `@unchecked` when you've manually verified thread-safety (e.g. internal locking) and leave a comment on *why* it's safe, since the compiler can't check it for you.
 - **Don't capture mutable var state in a `@Sendable` closure** (`Task { }`, `TaskGroup` child closures are implicitly `@Sendable`) — capture immutable copies or route through actor-isolated state instead.
 - **Closures crossing into async contexts:** completion handlers stored for later async invocation should be `@Sendable` and capture only `Sendable` values.
+- **Swift 6 language mode enables full data-race safety checking at compile time** (vs. Swift 5's opt-in warnings via `-strict-concurrency=complete`). If the project targets Swift 6 (`swiftLanguageMode(.v6)` in `Package.swift`, or the Xcode build setting), isolation/`Sendable` violations are **errors**, not warnings — don't suggest `@unchecked Sendable` or `@preconcurrency` as a quick silence-the-warning fix; treat them as a deliberate, documented escape hatch only.
+- **Region-based isolation** (SE-0414) lets the compiler pass some non-`Sendable` values across isolation boundaries safely when it can prove the sender doesn't retain access afterward (e.g. handing off a locally-created, uniquely-referenced object into a `Task`). This is why some Swift 6 code compiles without explicit `Sendable` conformance — don't add unnecessary conformances or copies when the compiler already accepts the transfer; only reach for `Sendable`/actor isolation when it actually rejects it.
+- **Sendable inference changed in Swift 6:** many standard library and SDK types gained implicit `Sendable` conformance, and public structs/enums in your own modules with all-`Sendable` members are now inferred `Sendable` without an explicit conformance in many contexts — but a type's inferred conformance is only visible to callers in the same module unless you declare it explicitly, so add an explicit `: Sendable` on public types you expect other modules to pass across boundaries.
+- **`@preconcurrency import`** silences `Sendable`/isolation errors from a specific un-migrated dependency (older Objective-C-based UIKit/AppKit APIs, a third-party module without concurrency annotations) without disabling strict checking project-wide. Scope it to the one import that needs it rather than weakening the whole target's language mode; remove it once that dependency ships concurrency annotations. See [[uikit-skill]] for the specific UIKit/AppKit APIs this commonly applies to.
 
 ## 5. Migrating from GCD / completion handlers
 
 - Replace `DispatchQueue.main.async { }` with `@MainActor` isolation or `await MainActor.run { }` (prefer isolating the whole function/type over one-off `MainActor.run` calls).
 - Replace `DispatchQueue.global().async { }` + completion closure with a plain `async` function; callers `await` it instead of nesting a closure.
 - Replace `DispatchSemaphore`/manual locks guarding shared state with an `actor`.
-- Wrap legacy completion-handler APIs you can't yet rewrite using `withCheckedThrowingContinuation` (or `withCheckedContinuation` if it can't fail) — always resume the continuation on **every** path exactly once; resuming zero or multiple times is a runtime crash/undefined behavior in debug builds.
+- Wrap legacy completion-handler APIs you can't yet rewrite using `withCheckedThrowingContinuation` (or `withCheckedContinuation` if it can't fail) — always resume the continuation on **every** path exactly once; resuming zero or multiple times is a runtime crash/undefined behavior in debug builds. The same technique bridges callback- and delegate-based UIKit/AppKit APIs into `async` code — see [[uikit-skill]] for imperative-UI-specific concerns (main-thread update requirements, delegate lifetime).
   ```swift
   func legacyWrapped() async throws -> Data {
       try await withCheckedThrowingContinuation { continuation in
@@ -69,6 +73,7 @@ Apply these practices when writing or reviewing concurrency code in Swift/iOS pr
 - `async throws` functions propagate normally with `try`/`catch` — no special handling needed beyond ordinary Swift error handling.
 - In a `TaskGroup`, a child task's thrown error surfaces at the next `await group.next()`/iteration — other children keep running unless you explicitly cancel the group (`group.cancelAll()`) on first failure if that's the desired semantics.
 - Don't silently discard errors from fire-and-forget `Task { }` blocks — at minimum log them; a bare `try?` that hides a failure the user needed to see is a bug, not error handling.
+- **Testing async code:** both Swift Testing and XCTest support `async` test functions directly — no `XCTestExpectation` wrapper needed for structured `async`/`await`. See [[apple-testing]] for framework choice and patterns.
 
 ## 8. Common pitfalls
 
@@ -80,6 +85,7 @@ Apply these practices when writing or reviewing concurrency code in Swift/iOS pr
 - Capturing `self` or mutable vars in a `@Sendable` closure without isolation, causing compiler errors or (under relaxed checking) real data races.
 - Polling with `Task.sleep` in a loop instead of using `AsyncSequence`/actual completion signals.
 - Mixing `@MainActor` isolation inconsistently — some methods isolated, others not, causing surprise hops or compiler-inserted `await`s that mask a design issue.
+- Reaching for `@unchecked Sendable` or `@preconcurrency import` as the first fix for a Swift 6 compiler error instead of understanding and addressing the actual isolation/data-race issue — these silence the checker without proving safety.
 
 **For the failure mode, a ❌/✅ code example, and the fix for each pitfall, read `references/common-pitfalls.md`.**
 
