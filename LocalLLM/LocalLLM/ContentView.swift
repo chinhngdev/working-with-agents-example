@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import DesignSystemKit
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
@@ -29,9 +30,8 @@ struct ContentView: View {
                     EditButton()
                 }
                 ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
+                    Button("Add Item", systemImage: "plus", action: addItem)
+                        .buttonStyle(.ds(.primary, size: .sm))
                 }
             }
         } detail: {

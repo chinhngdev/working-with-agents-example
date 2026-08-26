@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5E771D2F792686489339288E /* DesignSystemKit in Frameworks */ = {isa = PBXBuildFile; productRef = C7EC015A6FBE84276A81EF8A /* DesignSystemKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		4F1E3D82303D9F1F002C93E7 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5E771D2F792686489339288E /* DesignSystemKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = LocalLLM;
 			packageProductDependencies = (
+				C7EC015A6FBE84276A81EF8A /* DesignSystemKit */,
 			);
 			productName = LocalLLM;
 			productReference = 4F1E3D72303D9F1E002C93E7 /* LocalLLM.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = 4F1E3D69303D9F1E002C93E7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				9D425211F992F9D4C5F18EF7 /* XCLocalSwiftPackageReference "Packages/DesignSystemKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4F1E3D73303D9F1E002C93E7 /* Products */;
 			projectDirPath = "";
@@ -578,6 +587,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		9D425211F992F9D4C5F18EF7 /* XCLocalSwiftPackageReference "Packages/DesignSystemKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/DesignSystemKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C7EC015A6FBE84276A81EF8A /* DesignSystemKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = DesignSystemKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 4F1E3D6A303D9F1E002C93E7 /* Project object */;
 }
