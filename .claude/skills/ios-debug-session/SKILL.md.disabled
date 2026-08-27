@@ -16,7 +16,7 @@ Ask or determine which category this is — the approach differs significantly:
 - **Crash with a stack trace / `.ips` file** → go to Step 2 (crash log analysis).
 - **Reported crash with no trace available** (e.g. "users say it crashes sometimes") → go to Step 3 (reproduction).
 - **Memory growth / leak suspected** → go to Step 4 (Instruments: Allocations/Leaks).
-- **Performance issue, not a crash** (slow, janky) → recommend the `ios-performance-audit` skill instead, which covers Time Profiler and launch time in depth.
+- **Performance issue, not a crash** (slow, janky) → recommend the `ios-performance-audit` skill instead, which covers Time Profiler and launch time in depth (also via `xctrace`).
 - **Wrong behavior, no crash** (logic bug) → go to Step 5 (general isolation approach).
 
 ## Step 2: Reading and symbolicating a crash log
@@ -65,14 +65,34 @@ When no crash log is available yet, or the trace alone isn't enough to identify 
    - **Zombie Objects** (Objective-C interop code only) — turns a use-after-free into an immediate, readable crash message identifying the deallocated object's class, instead of a generic `EXC_BAD_ACCESS`.
 4. If it only reproduces in production/TestFlight and not under Xcode's debugger, check whether it's a release-only issue: `-O` optimization changing timing-sensitive behavior, or a `#if DEBUG` code path masking the bug locally.
 
-## Step 4: Instruments — Leaks and Allocations
+## Step 4: Instruments (via `xctrace`) — Leaks and Allocations
 
-Use when a memory leak or unexpected memory growth is suspected:
+Use when a memory leak or unexpected memory growth is suspected. Drive Instruments from the command line with `xctrace` — the standalone `instruments` CLI was deprecated in Xcode 12 and `xctrace` is its replacement. The GUI (Instruments.app) is still the richer way to explore a trace interactively; `xctrace` is what runs in a headless/scripted session and produces a `.trace` you can open later or export as XML.
 
-1. **Allocations instrument**: record a session that includes the suspected leaking flow performed several times in a loop (e.g. push/pop the same screen 10 times). Use the "Mark Generation" button between each cycle — if memory from a generation never gets collected, everything allocated in that generation and never freed is a leak candidate.
-2. **Leaks instrument**: runs alongside Allocations and flags objects with no remaining references but not deallocated (true retain cycles) — but note it only catches leaks it can prove structurally; not all memory growth is a "leak" in this strict sense (see: caches that just grow unbounded, which Leaks won't flag but Allocations growth will show).
-3. In the Allocations detail view, use "Call Trees" grouped by "Invert Call Tree" to find which line of code is responsible for the retained allocations — trace back to the actual `class`/closure holding the reference.
-4. Cross-reference with the `ios-code-review` skill's retain-cycle patterns (missing `[weak self]`, undeleted `NotificationCenter` observers, uncancelled Combine subscriptions) once Instruments identifies the specific type that's leaking.
+```bash
+# See available templates and target devices/simulators
+xcrun xctrace list templates
+xcrun xctrace list devices
+
+# Record the Allocations + Leaks flow, launching the app fresh
+xcrun xctrace record \
+  --template 'Leaks' \
+  --device 'iPhone 15' \
+  --output run.trace \
+  --launch -- /path/to/YourApp.app
+
+# Or attach to an already-running process by name or pid
+xcrun xctrace record --template 'Allocations' --attach YourApp --output run.trace
+
+# Pull data out of the .trace for analysis (no GUI)
+xcrun xctrace export --input run.trace --toc                       # list schemas/tables
+xcrun xctrace export --input run.trace --xpath '/trace-toc/run[@number="1"]/data/table[@schema="allocations"]'
+```
+
+1. **Allocations**: drive the suspected leaking flow several times in a loop (e.g. push/pop the same screen 10 times) — script it with an XCUITest so the recorded run is reproducible. In Instruments.app, the "Mark Generation" button separates each cycle; from `xctrace` there is no interactive generation marker, so instead compare persistent-bytes totals across repeated cycles in the exported `allocations` table — memory allocated in a cycle and never freed is a leak candidate.
+2. **Leaks**: the `Leaks` template flags objects with no remaining references but not deallocated (true retain cycles) — but note it only catches leaks it can prove structurally; not all memory growth is a "leak" in this strict sense (see: caches that just grow unbounded, which Leaks won't flag but Allocations growth will show).
+3. To find which line of code is responsible for the retained allocations, open `run.trace` in Instruments.app and use "Call Trees" with "Invert Call Tree", or export the `backtrace`/call-tree table and trace back to the actual `class`/closure holding the reference.
+4. Cross-reference with the `ios-code-review` skill's retain-cycle patterns (missing `[weak self]`, undeleted `NotificationCenter` observers, uncancelled Combine subscriptions) once the trace identifies the specific type that's leaking.
 
 ## Step 5: Isolating a non-crashing logic bug
 
@@ -92,5 +112,5 @@ Use when a memory leak or unexpected memory growth is suspected:
 ### Crash log shows symbols from a system framework only, nothing from the app's own code
 **Likely cause:** The app is calling into the framework in a way that violates its contract (e.g. calling a UIKit API off the main thread, mutating a collection while iterating it). Check the frame just above the system frames in the app's own code for what triggered the call.
 
-### Leaks instrument shows nothing, but Allocations memory keeps climbing
+### Leaks template shows nothing, but Allocations memory keeps climbing
 **Likely cause:** Not a structural leak — likely an unbounded cache, growing array, or a subscription/delegate list that's never pruned. Look for `append`/insert calls without a corresponding removal anywhere in the suspected type.
