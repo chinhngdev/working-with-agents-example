@@ -2,6 +2,7 @@
 name: ios-architecture-review
 description: Reviews and designs iOS app architecture (MVVM, MVC, VIPER, TCA, Clean Architecture, Coordinator pattern, Swift Package modularization). Use when the user asks to review app structure, choose an architecture pattern, plan modularization, decide between UIKit and SwiftUI for a feature, or refactor a large ViewController/View. Mention specific patterns like "MVVM", "VIPER", "Coordinator", "modularize", or "which architecture" as triggers.
 disable-model-invocation: false
+user-invocable: false
 context: fork
 ---
 

@@ -1,6 +1,7 @@
 ---
 name: ios-deploy-checklist
 description: Runs a pre-submission checklist for iOS app releases covering code signing, provisioning profiles, TestFlight builds, Info.plist permissions, and App Store Review Guidelines compliance. Use when the user asks to prepare a release, submit to TestFlight or the App Store, review before submission, or asks about code signing errors, provisioning profile issues, or App Store rejection risks.
+user-invocable: false
 ---
 
 # iOS Deploy Checklist
