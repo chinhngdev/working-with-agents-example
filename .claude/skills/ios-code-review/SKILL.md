@@ -1,6 +1,8 @@
 ---
 name: ios-code-review
 description: Reviews Swift and Objective-C code for iOS-specific bugs including retain cycles, thread safety violations, force unwraps, memory leaks in closures, and Swift concurrency misuse. Use when the user asks to review a Swift file, pull request, or diff, or says "review this code", "check for retain cycles", "is this thread safe", or pastes Swift code asking for feedback.
+disable-model-invocation: false
+context: fork
 ---
 
 # iOS Code Review
